@@ -11,7 +11,18 @@
   // Paleta de carriles: si cambia su longitud, cambiar PALETTE_SIZE (graph.ts) y autoBranchColor (extension.ts)
   const PALETTE = ['#4C8BF5', '#3FB9A6', '#E5534B', '#D4A72C', '#B07FE0', '#E07AB2', '#7FB65A', '#E0864A', '#5AA9E6', '#A9A24C'];
 
-  const saved = vscode.getState() || {};
+  /**
+   * Estado de la interfaz con el que arranca la página: el más reciente (savedAt) entre el guardado
+   * de este webview y el que guarda la extensión (data-ui-state), que es el del Log en su último
+   * sitio (panel o pestaña del editor). El de este webview puede ser de antes de moverlo.
+   */
+  function newerUiState(own, shared) {
+    const at = s => (s && typeof s.savedAt === 'number' ? s.savedAt : 0);
+    return (at(shared) > at(own) ? shared : own || shared) || {};
+  }
+  const saved = newerUiState(vscode.getState(), (() => {
+    try { return JSON.parse(document.body.dataset.uiState || 'null'); } catch { return null; }
+  })());
   // Valores por defecto de las opciones de vista (para los Reset to Defaults de Settings)
   const LOGVIEW_DEFAULTS = { details: true, subject: true, author: true, date: true, hash: true, tags: true, compact: false, mine: true, merges: true, current: true };
   const GROUPBY_DEFAULTS = { directory: true, repository: true };
@@ -80,7 +91,8 @@
   listEl.appendChild(inner);
 
   function saveUi() {
-    vscode.setState({
+    const state = {
+      savedAt: Date.now(),   // para elegir el más reciente al cargar (newerUiState)
       branchesWidth: ui.branchesWidth,
       detailsWidth: ui.detailsWidth,
       filesRatio: ui.filesRatio,
@@ -100,7 +112,10 @@
       settingsPage: ui.settingsPage,
       settingsCollapsed: ui.settingsCollapsed,
       mergeOptions: ui.mergeOptions,
-    });
+    };
+    vscode.setState(state);
+    // La extensión también lo guarda, para la página del Log en su próximo sitio
+    vscode.postMessage({ type: 'uiState', state });
   }
 
   function esc(s) {
@@ -487,6 +502,8 @@
       }
     }
     inCurrentBranch = null;
+    // Lo pendiente de Paths, hasta que llegue un log con ese filtro (no uno que ya venía de antes)
+    if (pathsPending && !pathsTimer && (m.logFilterSeq || 0) >= pathsSeq) { pathsPending = null; }
     renderFilters();
     renderTree();
     applySearch(false);
@@ -1222,9 +1239,10 @@
   // Filtro por rama
   // -------------------------------------------------------------------------
 
-  function setFilter(ref) {
+  /** Filtro de rama (null: quitarlo); roots, además, cambia los repos de Paths. */
+  function setFilter(ref, roots = null) {
     filterChanging = true;
-    vscode.postMessage({ type: 'filter', ref });
+    vscode.postMessage({ type: 'filter', ref, ...(roots ? { roots } : {}) });
   }
 
   // ----- filtros del log: Branch, User, Date y Paths (como en JetBrains) ----------
@@ -1250,8 +1268,33 @@
   }
   /** Primer «me» de los repos (user.name), para el filtro User. */
   const meName = () => (data ? (data.repos.find(r => r.me) || {}).me || '' : '');
-  const sendLogFilter = (key, value) => { filterChanging = true; vscode.postMessage({ type: 'logFilter', key, value }); };
+  // Cada cambio lleva un número; los 'data' traen el del último que aplicó la extensión (logFilterSeq)
+  let logFilterSeq = 0;
+  // (al recargar la página se sigue por el de la extensión, no desde 0)
+  const sendLogFilter = (key, value) => {
+    filterChanging = true;
+    logFilterSeq = Math.max(logFilterSeq, (data && data.logFilterSeq) || 0) + 1;
+    vscode.postMessage({ type: 'logFilter', key, value, seq: logFilterSeq });
+  };
   const pickLogFilter = key => vscode.postMessage({ type: 'pickLogFilter', key });
+  // Filtro Paths marcado en el menú que el log aún no refleja: los clics seguidos se mandan juntos
+  // (pathsTimer) y, hasta que llega el 'data' con el filtro nuevo, el menú se abre con esto
+  let pathsPending = null;  // { roots, paths }
+  let pathsTimer = 0;       // envío pendiente (0: ya se mandó)
+  let pathsSeq = 0;         // número con el que se mandó: el 'data' que lo traiga ya lo refleja
+  function flushPaths() {
+    if (!pathsTimer) { return; }
+    clearTimeout(pathsTimer);
+    pathsTimer = 0;
+    sendLogFilter('paths', pathsPending);
+    pathsSeq = logFilterSeq;
+  }
+  /** Otro cambio del filtro Paths (Clear, doble clic en una rama) manda sobre lo pendiente. */
+  function dropPaths() {
+    clearTimeout(pathsTimer);
+    pathsTimer = 0;
+    pathsPending = null;
+  }
 
   /** Texto del filtro activo («me», «2 users», «Last 7 Days»…) o '' si no está activo. */
   function filterValue(k) {
@@ -1333,22 +1376,21 @@
 
   /** Paths: los repositorios (marcables) y archivos o carpetas concretos, como en JetBrains. */
   function pathsFilterMenu() {
-    // Copia propia: con Ctrl+clic el menú sigue abierto y cada clic parte de lo ya marcado
-    const f = { roots: [...logFilters().roots], paths: [...logFilters().paths] };
-    const send = () => sendLogFilter('paths', { roots: f.roots, paths: f.paths });
-    const toggleRoot = root => () => {
-      f.roots = f.roots.includes(root) ? f.roots.filter(x => x !== root) : [...f.roots, root];
-      send();
+    // Repos y rutas forman un solo grupo marcable (el menú sigue abierto entre clics). Al log va
+    // solo el estado final: varios clics seguidos se juntan en un único filtro (un solo git log).
+    const { roots, paths } = pathsPending || logFilters();
+    const send = vals => {
+      pathsPending = { roots: vals.filter(v => v.root).map(v => v.root), paths: vals.filter(v => v.path).map(v => v.path) };
+      clearTimeout(pathsTimer);
+      pathsTimer = setTimeout(flushPaths, 250);
     };
     return clean([
-      ...data.repos.map(r => ({ label: r.name, key: r.rel && r.rel !== r.name ? r.rel : '', checked: f.roots.includes(r.root), multi: true, act: toggleRoot(r.root) })),
+      ...data.repos.map(r => ({ label: r.name, key: r.rel && r.rel !== r.name ? r.rel : '', checked: roots.includes(r.root), multi: send, value: { root: r.root } })),
       { sep: true },
-      { label: 'Select Files or Folders…', act: () => pickLogFilter('paths') },
-      f.paths.length > 0 && { sep: true },
-      ...f.paths.map(p => ({ label: pathLabel(p), checked: true, multi: true, act: () => {
-        f.paths = f.paths.includes(p) ? f.paths.filter(x => x !== p) : [...f.paths, p];
-        send();
-      } })),
+      // Lo pendiente va antes: la extensión añade lo elegido al filtro que tenga
+      { label: 'Select Files or Folders…', act: () => { flushPaths(); pickLogFilter('paths'); } },
+      paths.length > 0 && { sep: true },
+      ...paths.map(p => ({ label: pathLabel(p), checked: true, multi: send, value: { path: p } })),
     ]);
   }
 
@@ -1358,7 +1400,7 @@
     if (clear) {
       const k = clear.getAttribute('data-clear');
       if (k === 'branch') { setFilter(null); }
-      else if (k === 'paths') { sendLogFilter('paths', { roots: [], paths: [] }); }
+      else if (k === 'paths') { dropPaths(); sendLogFilter('paths', { roots: [], paths: [] }); }
       else { sendLogFilter(k === 'user' ? 'authors' : k, k === 'date' ? null : []); }
       return;
     }
@@ -1565,16 +1607,21 @@
     const node = data.tree.find(x => x.key === ref);
     // Rama de solo algunos repos: también se filtra Paths por esos repos
     const roots = node && !node.common ? node.repos.map(i => data.repos[i].root) : null;
-    filterChanging = true;
+    // Si el filtro de rama cambia Paths (roots), manda sobre lo pendiente del menú; si no, eso se
+    // manda antes, para no perderlo
+    const sendFilter = (/** @type {string | null} */ r, /** @type {string[] | null} */ newRoots) => {
+      if (newRoots) { dropPaths(); } else { flushPaths(); }
+      setFilter(r, newRoots);
+    };
     if (data.filterRef === ref) {
       // Quitar el filtro; si Paths sigue siendo el que puso la rama, también se quita
       const cur = logFilters().roots;
       const same = branchRoots && cur.length === branchRoots.length && branchRoots.every(r => cur.includes(r));
       branchRoots = null;
-      vscode.postMessage({ type: 'filter', ref: null, ...(same ? { roots: [] } : {}) });
+      sendFilter(null, same ? [] : null);
     } else {
       branchRoots = roots;
-      vscode.postMessage({ type: 'filter', ref, ...(roots ? { roots } : {}) });
+      sendFilter(ref, roots);
     }
   });
   treeEl.addEventListener('contextmenu', e => {
@@ -2017,6 +2064,24 @@
     return true;
   }
 
+  /**
+   * Clic en un elemento de un grupo marcable (it.multi: la función del grupo; it.value: el valor de
+   * la opción). El menú no se cierra (solo al pinchar fuera o con Esc). Clic marca o desmarca esta
+   * opción; Ctrl/Cmd+clic deja marcada solo esta. El grupo recibe de una vez los valores marcados.
+   * rows: las filas del menú ({ it, mi }); idx: la de este elemento.
+   */
+  function toggleMultiItem(it, idx, rows, e) {
+    const only = e.ctrlKey || e.metaKey;
+    const group = rows.filter(r => r.it.multi === it.multi);
+    if (only) { group.forEach(r => { r.it.checked = r.it === it; }); } else { it.checked = !it.checked; }
+    for (const r of only ? group : [rows[idx]]) {
+      r.mi.setAttribute('aria-checked', String(r.it.checked));
+      const c = r.mi.querySelector('.mi-check');
+      if (c) { c.innerHTML = r.it.checked ? ICON.check : ''; }
+    }
+    it.multi(group.filter(r => r.it.checked).map(r => r.it.value));
+  }
+
   function showMenu(items, x, y, opts = {}) {
     closeMenus();
     openMenu(items, x, y, 0, null, opts);
@@ -2087,15 +2152,7 @@
         e.stopPropagation();
         if (it.disabled) { return; }
         if (it.submenu) { openSub(idx); return; }
-        // Elementos marcables con multi: Ctrl/Cmd+clic los marca o desmarca sin cerrar el menú
-        if (it.multi && (e.ctrlKey || e.metaKey)) {
-          it.checked = !it.checked;
-          mi.setAttribute('aria-checked', String(it.checked));
-          const c = mi.querySelector('.mi-check');
-          if (c) { c.innerHTML = it.checked ? ICON.check : ''; }
-          it.act && it.act();
-          return;
-        }
+        if (it.multi) { toggleMultiItem(it, idx, rows, e); return; }
         closeMenus();
         it.act && it.act();
       });
@@ -2762,11 +2819,12 @@
     $('#commit-btn').textContent = commitAmend.checked ? 'Amend Commit' : 'Commit';
     $('#commit-push-btn').textContent = commitAmend.checked ? 'Amend and Push…' : 'Commit and Push…';
   }
-  let draftTimer = 0;
   commitMsg.addEventListener('input', () => {
     updateCommitButtons();
-    clearTimeout(draftTimer);
-    draftTimer = setTimeout(() => { ui.commitDraft = commitMsg.value; saveUi(); }, 400);
+    // En cada tecla, sin esperar: si el Log cambia de sitio (o se cierra su pestaña) la página se
+    // descarta enseguida y un guardado pendiente se perdería con las últimas letras
+    ui.commitDraft = commitMsg.value;
+    saveUi();
   });
   commitAmend.addEventListener('change', () => {
     // Como JetBrains: al marcar Amend se carga el mensaje del último commit
