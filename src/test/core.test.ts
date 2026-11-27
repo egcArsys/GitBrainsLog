@@ -5,7 +5,7 @@ import * as path from 'path';
 import {
   scanDepth, commitsPerPage, MAX_SCAN_DEPTH, MAX_COMMITS_PAGE, mergeArgs, MERGE_OPTIONS, autoBranchColor,
   validateSetting, validFontFamily, validFontSize, mergeLogs, FOLDER_COLOR_TOKENS, samePath, pathInside, safeRepoPath,
-  nestedRepos, pickPinnedRef, pinnedBranchNames, MAIN_BRANCHES,
+  nestedRepos, pickPinnedRef, pinnedBranchNames, pinnedBranchList, MAIN_BRANCHES,
 } from '../core';
 import { MAIN_COLOR } from '../graph';
 
@@ -100,7 +100,17 @@ describe('validateSetting (setSetting)', () => {
   test('dateFormat', () => {
     assert.equal(validateSetting('dateFormat', 'relative'), 'relative');
     assert.equal(validateSetting('dateFormat', 'absolute'), 'absolute');
+    assert.equal(validateSetting('dateFormat', 'custom'), 'custom');
     assert.equal(validateSetting('dateFormat', 'iso'), undefined);
+  });
+  test('dateFormatPattern: texto de una línea, no vacío y de hasta 100 caracteres', () => {
+    assert.equal(validateSetting('dateFormatPattern', ' yyyy-MM-dd HH:mm '), 'yyyy-MM-dd HH:mm');
+    assert.equal(validateSetting('dateFormatPattern', "EEE d MMM 'a las' HH:mm"), "EEE d MMM 'a las' HH:mm");
+    assert.equal(validateSetting('dateFormatPattern', ''), undefined);
+    assert.equal(validateSetting('dateFormatPattern', '   '), undefined);
+    assert.equal(validateSetting('dateFormatPattern', 'dd\nMM'), undefined);
+    assert.equal(validateSetting('dateFormatPattern', 'd'.repeat(101)), undefined);
+    assert.equal(validateSetting('dateFormatPattern', 3), undefined);
   });
   test('maxCommits: entero entre 100 y 10000', () => {
     assert.equal(validateSetting('maxCommits', 100), 100);
@@ -258,9 +268,10 @@ describe('pickPinnedRef con main/master (la rama principal de un repo, para el g
   test('la local main', () => assert.equal(pickMain([local('dev'), local('main')])?.name, 'main'));
   test('la local master si no hay main', () => assert.equal(pickMain([local('dev'), local('master')])?.name, 'master'));
   test('main antes que master si hay las dos', () => assert.equal(pickMain([local('master'), local('main')])?.name, 'main'));
-  test('una local manda sobre la remota', () => assert.equal(pickMain([remote('origin', 'main'), local('master')])?.name, 'master'));
+  test('manda la prioridad: main del remoto antes que master local', () => assert.equal(pickMain([remote('origin', 'main'), local('master')])?.name, 'origin/main'));
+  test('de la misma rama, la local antes que la remota', () => assert.equal(pickMain([remote('origin', 'main'), local('main')])?.name, 'main'));
 
-  test('sin ninguna local, la del remoto por defecto', () => {
+  test('sin la local, la del remoto por defecto', () => {
     assert.equal(pickMain([remote('upstream', 'main'), remote('origin', 'main')], 'origin')?.name, 'origin/main');
     assert.equal(pickMain([remote('origin', 'master')], 'origin')?.name, 'origin/master');
   });
@@ -275,33 +286,43 @@ describe('pickPinnedRef con main/master (la rama principal de un repo, para el g
   });
 });
 
-describe('pinnedBranchNames y pickPinnedRef con otra rama (jbGit.graphPinBranch / graphPinnedBranch)', () => {
+describe('pinnedBranchNames y pickPinnedRef con una lista de ramas (jbGit.graphPinBranch / graphPinnedBranch)', () => {
   const local = (name: string) => ({ type: 'local', name, full: `refs/heads/${name}` });
-  const pin = (enabled: unknown, name: unknown) => pinnedBranchNames(cfg({ graphPinBranch: enabled, graphPinnedBranch: name }));
   const remote = (remote: string, branch: string) => ({ type: 'remote', name: `${remote}/${branch}`, remote, branch, full: `refs/remotes/${remote}/${branch}` });
+  const pin = (enabled: unknown, names: unknown) => pinnedBranchNames(cfg({ graphPinBranch: enabled, graphPinnedBranch: names }));
 
-  test('por defecto (main): main y, si no hay, master', () => {
-    assert.deepEqual(pin(true, 'main'), ['main', 'master']);
-    assert.deepEqual(pinnedBranchNames(cfg({})), ['main', 'master']);
+  test('por defecto: main y, si no hay, master', () => assert.deepEqual(pinnedBranchNames(cfg({})), ['main', 'master']));
+  test('la lista tal cual, en su orden, sin espacios, vacías ni repetidas', () => {
+    assert.deepEqual(pin(true, ['branchA', ' branchB ', '', 'branchA']), ['branchA', 'branchB']);
+    assert.deepEqual(pin(true, ['master']), ['master'], 'master solo ya no añade main');
   });
-  test('master: master y, si no hay, main', () => assert.deepEqual(pin(true, 'master'), ['master', 'main']));
-  test('otra rama: solo esa (sin espacios alrededor)', () => assert.deepEqual(pin(true, ' develop '), ['develop']));
-  test('desactivado o sin nombre: ninguna', () => {
-    assert.deepEqual(pin(false, 'main'), []);
+  test('desactivado, lista vacía o valor raro: ninguna', () => {
+    assert.deepEqual(pin(false, ['main']), []);
+    assert.deepEqual(pin(true, []), []);
     assert.deepEqual(pin(true, ''), []);
-    assert.deepEqual(pin(true, '   '), []);
     assert.deepEqual(pin(true, 3), []);
+    assert.deepEqual(pin(true, ['dos palabras', 7]), []);
   });
 
-  test('pickPinnedRef busca la rama configurada, local antes que remota', () => {
-    const refs = [local('main'), local('develop'), remote('origin', 'release')];
-    assert.equal(pickPinnedRef(refs, 'origin', ['develop'])?.name, 'develop');
-    assert.equal(pickPinnedRef(refs, 'origin', ['release'])?.name, 'origin/release');
-    assert.equal(pickPinnedRef([remote('origin', 'develop'), local('develop')], 'origin', ['develop'])?.name, 'develop');
+  test('pinnedBranchList (lo que recibe Settings): siempre una lista, también desactivado o escrito a mano', () => {
+    assert.deepEqual(pinnedBranchList(cfg({ graphPinBranch: false, graphPinnedBranch: ['develop'] })), ['develop']);
+    assert.deepEqual(pinnedBranchList(cfg({ graphPinnedBranch: 'develop, main' })), [], 'un texto no es una lista');
+    assert.deepEqual(pinnedBranchList(cfg({ graphPinnedBranch: {} })), []);
+    assert.deepEqual(pinnedBranchList(cfg({ graphPinnedBranch: null })), []);
+    assert.deepEqual(pinnedBranchList(cfg({})), ['main', 'master']);
   });
-  test('pickPinnedRef: si la rama configurada no existe, ninguna (no cae a main)', () => {
-    assert.equal(pickPinnedRef([local('main'), local('master')], 'origin', ['develop']), undefined);
-    assert.equal(pickPinnedRef([local('main')], 'origin', []), undefined);
+
+  test('pickPinnedRef: la primera de la lista que exista', () => {
+    const refs = [local('main'), local('branchB')];
+    assert.equal(pickPinnedRef([...refs, local('branchA')], 'origin', ['branchA', 'branchB'])?.name, 'branchA');
+    assert.equal(pickPinnedRef(refs, 'origin', ['branchA', 'branchB'])?.name, 'branchB', 'sin branchA, branchB');
+    assert.equal(pickPinnedRef(refs, 'origin', ['branchA', 'branchC']), undefined, 'ninguna: no cae a main');
+    assert.equal(pickPinnedRef(refs, 'origin', []), undefined);
+  });
+  test('pickPinnedRef: la prioridad manda sobre local/remota (branchA del remoto antes que branchB local)', () => {
+    assert.equal(pickPinnedRef([local('branchB'), remote('origin', 'branchA')], 'origin', ['branchA', 'branchB'])?.name, 'origin/branchA');
+    assert.equal(pickPinnedRef([remote('origin', 'branchA'), local('branchA')], 'origin', ['branchA'])?.name, 'branchA');
+    assert.equal(pickPinnedRef([local('branchB'), remote('upstream', 'branchA')], 'origin', ['branchA', 'branchB'])?.name, 'branchB', 'solo el remoto por defecto');
   });
 });
 
@@ -311,12 +332,13 @@ describe('validateSetting de graphPinBranch y graphPinnedBranch', () => {
     assert.equal(validateSetting('graphPinBranch', true), true);
     assert.equal(validateSetting('graphPinBranch', 'no'), undefined);
   });
-  test('graphPinnedBranch: un nombre de rama sin espacios, o vacío', () => {
-    assert.equal(validateSetting('graphPinnedBranch', ' feature/x '), 'feature/x');
-    assert.equal(validateSetting('graphPinnedBranch', ''), '');
-    assert.equal(validateSetting('graphPinnedBranch', 'dos palabras'), undefined);
-    assert.equal(validateSetting('graphPinnedBranch', 'x'.repeat(251)), undefined);
-    assert.equal(validateSetting('graphPinnedBranch', 3), undefined);
+  test('graphPinnedBranch: lista de nombres sin espacios (vacía vale)', () => {
+    assert.deepEqual(validateSetting('graphPinnedBranch', [' feature/x ', 'main', '', 'main']), ['feature/x', 'main']);
+    assert.deepEqual(validateSetting('graphPinnedBranch', []), []);
+    assert.equal(validateSetting('graphPinnedBranch', ['main', 'dos palabras']), undefined);
+    assert.equal(validateSetting('graphPinnedBranch', ['x'.repeat(251)]), undefined);
+    assert.equal(validateSetting('graphPinnedBranch', ['main', 3]), undefined);
+    assert.equal(validateSetting('graphPinnedBranch', 'main'), undefined);
   });
 });
 

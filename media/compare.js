@@ -133,9 +133,11 @@
   let historyFolder = false;
   let historyPath = '';
 
+  /** Fecha de un commit: siempre dd/MM/yyyy, HH:mm (como la absoluta del Log), sea cual sea el idioma de VS Code. */
   function formatDate(t) {
     const d = new Date(t * 1000);
-    return `${d.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit', year: 'numeric' })}, ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
+    const p2 = (/** @type {number} */ n) => String(n).padStart(2, '0');
+    return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}, ${p2(d.getHours())}:${p2(d.getMinutes())}`;
   }
   function visibleCommits() {
     const q = histFilter.trim().toLowerCase();

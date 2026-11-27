@@ -13,7 +13,7 @@ import { fontAttrs, fontSettings } from './fonts';
 import { FileIconsFeed, watchFileIcons } from './fileIcons';
 import {
   scanDepth, commitsPerPage, mergeArgs, autoBranchColor, DEFAULT_FOLDER_COLORS, validateSetting, mergeLogs,
-  samePath, pathInside, safeRepoPath, nestedRepos, pickPinnedRef, pinnedBranchNames, SerialQueue, Generation, watchSpecs, nonce as newNonce, escAttr,
+  samePath, pathInside, safeRepoPath, nestedRepos, pickPinnedRef, pinnedBranchNames, pinnedBranchList, SerialQueue, Generation, watchSpecs, nonce as newNonce, escAttr,
 } from './core';
 
 const SCHEME = 'jbgit';
@@ -585,8 +585,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
         const inList = new Set(list.map(c => c.hash));
         list = list.map(c => ({ ...c, parents: c.parents.filter(p => inList.has(p)) }));
       }
-      // La rama fijada de cada repo (jbGit.graphPinnedBranch, main por defecto): su línea va en
-      // el carril de la izquierda. Con jbGit.graphPinBranch desactivado no se fija ninguna
+      // La rama fijada de cada repo (ver pinnedBranchNames): su línea va en el carril de la izquierda
       const pinNames = pinnedBranchNames(cfg);
       const mainTips = included.flatMap(r => {
         const m = pickPinnedRef(r.refs, r.defaultRemote(), pinNames);
@@ -627,6 +626,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
         longEdges: this.longEdges(),
         hasMore,
         dateFormat: cfg.get<string>('dateFormat', 'absolute'),
+        datePattern: cfg.get<string>('dateFormatPattern', 'dd/MM/yyyy HH:mm'),
         commits: list.map((c, i) => ({ ...c, g: graph[i] })),
       });
       await this.refreshChanges();
@@ -1749,11 +1749,12 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
       type: 'settings',
       values: {
         dateFormat: c.get<string>('dateFormat', 'absolute'),
+        dateFormatPattern: c.get<string>('dateFormatPattern', 'dd/MM/yyyy HH:mm'),
         maxCommits: commitsPerPage(c),
         repositoryScanMaxDepth: scanDepth(c),
         autoStage: c.get<boolean>('autoStage', true),
         graphPinBranch: c.get<boolean>('graphPinBranch', true),
-        graphPinnedBranch: c.get<string>('graphPinnedBranch', 'main'),
+        graphPinnedBranch: pinnedBranchList(c),
         protectedBranches: c.get<string[]>('protectedBranches', ['main', 'master']),
         folderColors: c.get<Record<string, string>>('folderColors', DEFAULT_FOLDER_COLORS),
         branchColors: c.get<Record<string, string>>('branchColors', {}),
@@ -2724,6 +2725,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
     const css = webview.asWebviewUri(vscode.Uri.joinPath(media, 'main.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(media, 'main.js'));
     const icons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'fileicons.js'));
+    const dates = webview.asWebviewUri(vscode.Uri.joinPath(media, 'dateformat.js'));
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2814,6 +2816,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
 </div>
 <div id="menu-root"></div>
 <script nonce="${nonce}" src="${icons}"></script>
+<script nonce="${nonce}" src="${dates}"></script>
 <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;

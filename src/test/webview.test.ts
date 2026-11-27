@@ -1212,3 +1212,41 @@ describe('tipos de mensaje (docs/messages.md ↔ código)', () => {
     assert.deepEqual(minus(dlgSends, handled), []);
   });
 });
+
+describe('formatDate del log (jbGit.dateFormat)', () => {
+  const make = (data: unknown, jbDateFormat: unknown) => sandbox(MAIN, ['formatDate'], { data, jbDateFormat, DEFAULT_DATE_PATTERN: 'dd/MM/yyyy HH:mm' });
+  const t = new Date(2026, 8, 9, 8, 5).getTime() / 1000;
+
+  test('custom: el patrón de los datos, o el que se pase (vista previa de Settings)', () => {
+    const calls: unknown[][] = [];
+    const fd = make({ dateFormat: 'custom', datePattern: 'yyyy' }, { format: (p: string, d: Date) => { calls.push([p, d.getTime()]); return `[${p}]`; } });
+    assert.equal(fd.formatDate(t), '[yyyy]');
+    assert.deepEqual(calls[0], ['yyyy', t * 1000]);
+    assert.equal(fd.formatDate(t, 'custom', 'HH:mm'), '[HH:mm]');
+  });
+
+  test('custom sin patrón: el de por defecto', () => {
+    const fd = make({ dateFormat: 'custom', datePattern: '' }, { format: (p: string) => p });
+    assert.equal(fd.formatDate(t), 'dd/MM/yyyy HH:mm');
+  });
+
+  test('absolute (y sin datos) no usa el patrón', () => {
+    const fd = make({ dateFormat: 'absolute', datePattern: 'yyyy' }, { format: () => assert.fail('no debía usar el patrón') });
+    assert.match(fd.formatDate(t), /2026/);
+    assert.match(make(null, {}).formatDate(t), /2026/);
+  });
+
+  test('absolute: siempre dd/MM/yyyy, HH:mm (día primero, 24 horas), sea cual sea el idioma', () => {
+    const fd = make({ dateFormat: 'absolute' }, {});
+    assert.equal(fd.formatDate(new Date(2026, 10, 26, 18, 40).getTime() / 1000), '26/11/2026, 18:40');
+    assert.equal(fd.formatDate(new Date(2026, 11, 28, 22, 58).getTime() / 1000), '28/12/2026, 22:58');
+    assert.equal(fd.formatDate(new Date(2026, 0, 1, 0, 5).getTime() / 1000), '01/01/2026, 00:05');
+  });
+
+  test('Push y Compare: el mismo formato absoluto que el Log', () => {
+    for (const file of ['media/dialog.js', 'media/compare.js']) {
+      const fd = sandbox(read(file), ['formatDate']);
+      assert.equal(fd.formatDate(new Date(2026, 10, 26, 18, 40).getTime() / 1000), '26/11/2026, 18:40', file);
+    }
+  });
+});
