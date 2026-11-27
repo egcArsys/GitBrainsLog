@@ -13,7 +13,7 @@ import { fontAttrs, fontSettings } from './fonts';
 import { FileIconsFeed, watchFileIcons } from './fileIcons';
 import {
   scanDepth, commitsPerPage, mergeArgs, autoBranchColor, DEFAULT_FOLDER_COLORS, validateSetting, mergeLogs,
-  samePath, pathInside, safeRepoPath, nestedRepos, pickMainRef, SerialQueue, Generation, watchSpecs, nonce as newNonce, escAttr,
+  samePath, pathInside, safeRepoPath, nestedRepos, pickPinnedRef, pinnedBranchNames, SerialQueue, Generation, watchSpecs, nonce as newNonce, escAttr,
 } from './core';
 
 const SCHEME = 'jbgit';
@@ -585,9 +585,11 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
         const inList = new Set(list.map(c => c.hash));
         list = list.map(c => ({ ...c, parents: c.parents.filter(p => inList.has(p)) }));
       }
-      // La rama principal de cada repo (main o master): su línea va en el carril de la izquierda
+      // La rama fijada de cada repo (jbGit.graphPinnedBranch, main por defecto): su línea va en
+      // el carril de la izquierda. Con jbGit.graphPinBranch desactivado no se fija ninguna
+      const pinNames = pinnedBranchNames(cfg);
       const mainTips = included.flatMap(r => {
-        const m = pickMainRef(r.refs, r.defaultRemote());
+        const m = pickPinnedRef(r.refs, r.defaultRemote(), pinNames);
         return m ? [r.id(m.hash)] : [];
       });
       const graph = computeGraph(list, this.longEdges(), this.branchColorFn(included), mainTips);
@@ -1750,6 +1752,8 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
         maxCommits: commitsPerPage(c),
         repositoryScanMaxDepth: scanDepth(c),
         autoStage: c.get<boolean>('autoStage', true),
+        graphPinBranch: c.get<boolean>('graphPinBranch', true),
+        graphPinnedBranch: c.get<string>('graphPinnedBranch', 'main'),
         protectedBranches: c.get<string[]>('protectedBranches', ['main', 'master']),
         folderColors: c.get<Record<string, string>>('folderColors', DEFAULT_FOLDER_COLORS),
         branchColors: c.get<Record<string, string>>('branchColors', {}),

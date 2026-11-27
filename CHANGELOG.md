@@ -4,6 +4,10 @@ Los cambios de cada versión de GitBrainsLog. El formato sigue [Keep a Changelog
 
 ## [Unreleased]
 
+### Añadido
+
+- **Rama fijada a la izquierda del grafo, configurable.** `jbGit.graphPinnedBranch` elige la rama cuya línea va siempre en la columna de la izquierda (por defecto `main`, o `master` si no hay `main`) y `jbGit.graphPinBranch` lo activa o desactiva; también en *Settings ▸ Log ▸ Graph*. Desactivado, o con el nombre vacío, cada rama toma el primer carril libre, como antes de la 1.1.0.
+
 ## [1.1.0] - 2026-11-27
 
 ### Añadido

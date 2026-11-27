@@ -5,7 +5,7 @@ import * as path from 'path';
 import {
   scanDepth, commitsPerPage, MAX_SCAN_DEPTH, MAX_COMMITS_PAGE, mergeArgs, MERGE_OPTIONS, autoBranchColor,
   validateSetting, validFontFamily, validFontSize, mergeLogs, FOLDER_COLOR_TOKENS, samePath, pathInside, safeRepoPath,
-  nestedRepos, pickMainRef,
+  nestedRepos, pickPinnedRef, pinnedBranchNames, MAIN_BRANCHES,
 } from '../core';
 import { MAIN_COLOR } from '../graph';
 
@@ -250,27 +250,73 @@ describe('rutas (samePath, pathInside, safeRepoPath)', () => {
   });
 });
 
-describe('pickMainRef (la rama principal de un repo, para el grafo)', () => {
+describe('pickPinnedRef con main/master (la rama principal de un repo, para el grafo)', () => {
+  const pickMain = <R extends { type: string; name: string; remote?: string; branch?: string }>(refs: R[], remote?: string) => pickPinnedRef(refs, remote, MAIN_BRANCHES);
   const local = (name: string) => ({ type: 'local', name, full: `refs/heads/${name}` });
   const remote = (remote: string, branch: string) => ({ type: 'remote', name: `${remote}/${branch}`, remote, branch, full: `refs/remotes/${remote}/${branch}` });
 
-  test('la local main', () => assert.equal(pickMainRef([local('dev'), local('main')])?.name, 'main'));
-  test('la local master si no hay main', () => assert.equal(pickMainRef([local('dev'), local('master')])?.name, 'master'));
-  test('main antes que master si hay las dos', () => assert.equal(pickMainRef([local('master'), local('main')])?.name, 'main'));
-  test('una local manda sobre la remota', () => assert.equal(pickMainRef([remote('origin', 'main'), local('master')])?.name, 'master'));
+  test('la local main', () => assert.equal(pickMain([local('dev'), local('main')])?.name, 'main'));
+  test('la local master si no hay main', () => assert.equal(pickMain([local('dev'), local('master')])?.name, 'master'));
+  test('main antes que master si hay las dos', () => assert.equal(pickMain([local('master'), local('main')])?.name, 'main'));
+  test('una local manda sobre la remota', () => assert.equal(pickMain([remote('origin', 'main'), local('master')])?.name, 'master'));
 
   test('sin ninguna local, la del remoto por defecto', () => {
-    assert.equal(pickMainRef([remote('upstream', 'main'), remote('origin', 'main')], 'origin')?.name, 'origin/main');
-    assert.equal(pickMainRef([remote('origin', 'master')], 'origin')?.name, 'origin/master');
+    assert.equal(pickMain([remote('upstream', 'main'), remote('origin', 'main')], 'origin')?.name, 'origin/main');
+    assert.equal(pickMain([remote('origin', 'master')], 'origin')?.name, 'origin/master');
   });
 
   test('un remoto sin «branch» (se saca del nombre) también vale', () => {
-    assert.equal(pickMainRef([{ type: 'remote', name: 'origin/main', remote: 'origin' }], 'origin')?.name, 'origin/main');
+    assert.equal(pickMain([{ type: 'remote', name: 'origin/main', remote: 'origin' }], 'origin')?.name, 'origin/main');
   });
 
   test('ni main ni master: ninguna (ni un tag ni una rama que se llame parecido)', () => {
-    assert.equal(pickMainRef([local('develop'), local('main2'), local('feature/main'), { type: 'tag', name: 'main', full: 'refs/tags/main' }]), undefined);
-    assert.equal(pickMainRef([]), undefined);
+    assert.equal(pickMain([local('develop'), local('main2'), local('feature/main'), { type: 'tag', name: 'main', full: 'refs/tags/main' }]), undefined);
+    assert.equal(pickMain([]), undefined);
+  });
+});
+
+describe('pinnedBranchNames y pickPinnedRef con otra rama (jbGit.graphPinBranch / graphPinnedBranch)', () => {
+  const local = (name: string) => ({ type: 'local', name, full: `refs/heads/${name}` });
+  const pin = (enabled: unknown, name: unknown) => pinnedBranchNames(cfg({ graphPinBranch: enabled, graphPinnedBranch: name }));
+  const remote = (remote: string, branch: string) => ({ type: 'remote', name: `${remote}/${branch}`, remote, branch, full: `refs/remotes/${remote}/${branch}` });
+
+  test('por defecto (main): main y, si no hay, master', () => {
+    assert.deepEqual(pin(true, 'main'), ['main', 'master']);
+    assert.deepEqual(pinnedBranchNames(cfg({})), ['main', 'master']);
+  });
+  test('master: master y, si no hay, main', () => assert.deepEqual(pin(true, 'master'), ['master', 'main']));
+  test('otra rama: solo esa (sin espacios alrededor)', () => assert.deepEqual(pin(true, ' develop '), ['develop']));
+  test('desactivado o sin nombre: ninguna', () => {
+    assert.deepEqual(pin(false, 'main'), []);
+    assert.deepEqual(pin(true, ''), []);
+    assert.deepEqual(pin(true, '   '), []);
+    assert.deepEqual(pin(true, 3), []);
+  });
+
+  test('pickPinnedRef busca la rama configurada, local antes que remota', () => {
+    const refs = [local('main'), local('develop'), remote('origin', 'release')];
+    assert.equal(pickPinnedRef(refs, 'origin', ['develop'])?.name, 'develop');
+    assert.equal(pickPinnedRef(refs, 'origin', ['release'])?.name, 'origin/release');
+    assert.equal(pickPinnedRef([remote('origin', 'develop'), local('develop')], 'origin', ['develop'])?.name, 'develop');
+  });
+  test('pickPinnedRef: si la rama configurada no existe, ninguna (no cae a main)', () => {
+    assert.equal(pickPinnedRef([local('main'), local('master')], 'origin', ['develop']), undefined);
+    assert.equal(pickPinnedRef([local('main')], 'origin', []), undefined);
+  });
+});
+
+describe('validateSetting de graphPinBranch y graphPinnedBranch', () => {
+  test('graphPinBranch: solo booleanos', () => {
+    assert.equal(validateSetting('graphPinBranch', false), false);
+    assert.equal(validateSetting('graphPinBranch', true), true);
+    assert.equal(validateSetting('graphPinBranch', 'no'), undefined);
+  });
+  test('graphPinnedBranch: un nombre de rama sin espacios, o vacío', () => {
+    assert.equal(validateSetting('graphPinnedBranch', ' feature/x '), 'feature/x');
+    assert.equal(validateSetting('graphPinnedBranch', ''), '');
+    assert.equal(validateSetting('graphPinnedBranch', 'dos palabras'), undefined);
+    assert.equal(validateSetting('graphPinnedBranch', 'x'.repeat(251)), undefined);
+    assert.equal(validateSetting('graphPinnedBranch', 3), undefined);
   });
 });
 

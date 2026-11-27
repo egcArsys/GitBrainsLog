@@ -102,16 +102,30 @@ export function mergeArgs(options: unknown, message: unknown): string[] {
 export const MAIN_BRANCHES = ['main', 'master'];
 
 /**
- * La rama principal de un repo: la local `main` o, si no, `master`; y si no hay ninguna local, la
- * de su remoto por defecto. El grafo del Log deja su línea en el carril de la izquierda.
+ * Las ramas cuya línea se fija en el carril 0 del grafo, por orden de preferencia
+ * (jbGit.graphPinBranch y jbGit.graphPinnedBranch). Desactivado o sin nombre, ninguna: los
+ * carriles se reparten por orden de aparición. main y master se sustituyen la una a la otra (con
+ * «main», un repo que solo tiene master fija master); cualquier otro nombre, solo esa rama.
  */
-export function pickMainRef<R extends { type: string; name: string; remote?: string; branch?: string }>(refs: R[], remote?: string): R | undefined {
-  for (const n of MAIN_BRANCHES) {
+export function pinnedBranchNames(c: ConfigLike): string[] {
+  if (c.get<unknown>('graphPinBranch', true) === false) { return []; }
+  const name = c.get<unknown>('graphPinnedBranch', 'main');
+  const n = typeof name === 'string' ? name.trim() : '';
+  if (!n) { return []; }
+  return MAIN_BRANCHES.includes(n) ? [n, ...MAIN_BRANCHES.filter(x => x !== n)] : [n];
+}
+
+/**
+ * La rama fijada de un repo: la primera local de `names` que exista y, si no hay ninguna local,
+ * la de su remoto por defecto. El grafo del Log deja su línea en el carril de la izquierda.
+ */
+export function pickPinnedRef<R extends { type: string; name: string; remote?: string; branch?: string }>(refs: R[], remote: string | undefined, names: string[]): R | undefined {
+  for (const n of names) {
     const local = refs.find(r => r.type === 'local' && r.name === n);
     if (local) { return local; }
   }
   const nameOf = (r: R) => r.branch ?? r.name.slice(r.name.indexOf('/') + 1);
-  for (const n of MAIN_BRANCHES) {
+  for (const n of names) {
     const remoteRef = refs.find(r => r.type === 'remote' && nameOf(r) === n && (!remote || !r.remote || r.remote === remote));
     if (remoteRef) { return remoteRef; }
   }
@@ -149,6 +163,9 @@ export const SETTING_VALIDATORS: Record<string, (v: any) => any> = {
   maxCommits: v => (Number.isInteger(v) && v >= 100 && v <= MAX_COMMITS_PAGE ? v : undefined),
   repositoryScanMaxDepth: v => (Number.isInteger(v) && v >= 0 && v <= MAX_SCAN_DEPTH ? v : undefined),
   autoStage: v => (typeof v === 'boolean' ? v : undefined),
+  graphPinBranch: v => (typeof v === 'boolean' ? v : undefined),
+  // Nombre de rama (sin el remoto); vacío = no fijar ninguna
+  graphPinnedBranch: v => (typeof v === 'string' && /^\S{0,250}$/.test(v.trim()) ? v.trim() : undefined),
   protectedBranches: v => (Array.isArray(v) && v.every(x => typeof x === 'string')
     ? [...new Set(v.map((x: string) => x.trim()).filter(Boolean))] : undefined),
   folderColors: v => {

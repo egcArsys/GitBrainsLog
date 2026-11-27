@@ -33,7 +33,7 @@ o en VS Code: *Extensions ▸ ⋯ ▸ Install from VSIX…*
 
 ### Log
 
-- **Grafo de commits** con un color fijo por rama (el mismo en cada recarga y en todos los repos). La rama principal (`main` o `master`) va siempre en la columna de la izquierda, aunque haya ramas más recientes. Las aristas que unen commits muy lejanos se cortan con una flecha que, al pulsarla, salta al otro extremo, como en JetBrains.
+- **Grafo de commits** con un color fijo por rama (el mismo en cada recarga y en todos los repos). La rama principal (`main` o `master`, configurable con `jbGit.graphPinnedBranch`) va siempre en la columna de la izquierda, aunque haya ramas más recientes; con `jbGit.graphPinBranch` desactivado no se fija ninguna. Las aristas que unen commits muy lejanos se cortan con una flecha que, al pulsarla, salta al otro extremo, como en JetBrains.
 - **Panel de ramas** con Local, Remote y Tags en árbol, indicadores ↑/↓, buscador, ramas favoritas (estrella) y ramas protegidas (candado). Doble clic en una rama filtra el log por ella.
 - **Filtros** junto al buscador: *Branch*, *User*, *Date* y *Paths*. Se combinan y filtran en git, así que valen sobre todo el historial.
 - **Búsqueda** por mensaje, autor (nombre o correo) o el principio de un hash, sin distinguir mayúsculas. La hace git sobre **todo el historial** del log (la misma rama, filtros y repos), no solo sobre los commits cargados: no hace falta pulsar *Load more* para encontrarlo.
@@ -110,6 +110,8 @@ Se editan en la pestaña **Settings** o en los ajustes de VS Code (`jbGit.*`).
 | `jbGit.autoStage` | `true` | Añade al stage solos los cambios de archivos con seguimiento. |
 | `jbGit.protectedBranches` | `["main", "master"]` | Ramas remotas que no se pueden borrar (llevan un candado). |
 | `jbGit.branchColors` | `{}` | Color del carril de cada rama en el grafo, por nombre. |
+| `jbGit.graphPinBranch` | `true` | Fija la línea de una rama en la columna de la izquierda del grafo. Desactivado, cada rama toma el primer carril libre. |
+| `jbGit.graphPinnedBranch` | `"main"` | Rama que se fija a la izquierda (sin el remoto). `main` y `master` se sustituyen la una a la otra; vacío = ninguna. |
 | `jbGit.folderColors` | bugfix, feature, release, hotfix | Color del icono de cada carpeta del árbol de ramas. |
 | `jbGit.tagColor` | `yellow` | Color de los tags. |
 | `jbGit.fontFamily` | `""` | Fuente de la interfaz de la extensión. Vacío = la de VS Code. |

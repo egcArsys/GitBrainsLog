@@ -53,7 +53,7 @@ export const MAIN_COLOR = 3;
  * él), para que una rama tenga siempre el mismo color, en todos los repos y en cada
  * recarga. Si devuelve undefined, el carril toma el siguiente color de la paleta.
  *
- * mainTips: los commits a los que apunta main/master (uno por repo). Su línea principal (la
+ * mainTips: los commits a los que apunta la rama fijada (uno por repo; puede ir vacío). Su línea principal (la
  * cadena de primeros padres) va siempre en el carril 0, a la izquierda del todo, aunque haya
  * ramas más nuevas que main o que salgan de ella: el carril 0 se reserva hasta el último commit
  * de esa línea, las demás ramas empiezan en el 1 y, si una espera a un commit de la línea

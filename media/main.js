@@ -3382,7 +3382,7 @@
         `</div>`;
     };
     const num = (key, min, max, step = 1) => `<input type="number" data-cfg="${key}" min="${min}" max="${max}" step="${step}" value="${esc(s[key] ?? CFG_DEFAULTS[key])}">`;
-    const text = (key, placeholder, value = s[key] || '') => `<input type="text" data-cfg="${key}" value="${esc(value)}" placeholder="${esc(placeholder)}" spellcheck="false">`;
+    const text = (key, placeholder, value = s[key] || '', disabled = false) => `<input type="text" data-cfg="${key}" value="${esc(value)}" placeholder="${esc(placeholder)}" spellcheck="false"${disabled ? ' disabled' : ''}>`;
 
     // Opciones del ojo del Log, una tarjeta por cada cabecera del menú
     let logCards = '';
@@ -3443,6 +3443,13 @@
           lvCol('Commits',
             item('Date format', '', `<select class="lv-date" data-cfg="dateFormat" title="How commit dates are shown in the log"><option value="absolute"${s.dateFormat !== 'relative' ? ' selected' : ''}>Absolute (17/11/2026, 12:49)</option><option value="relative"${s.dateFormat === 'relative' ? ' selected' : ''}>Relative (2 hours ago)</option></select>`, 'dateFormat', 'how commit dates are shown absolute relative') +
             item('Commits per page', '', num('maxCommits', 100, 10000, 100), 'maxCommits', 'commits loaded at once load more')) +
+          // Rama fijada en la columna de la izquierda del grafo (jbGit.graphPinBranch / graphPinnedBranch)
+          lvCol('Lanes',
+            checkItem('Pin branch to the left lane', 'The pinned branch always takes the leftmost column of the graph, even with newer branches. Off: each branch takes the first free lane.',
+              `<input type="checkbox" data-cfg="graphPinBranch"${s.graphPinBranch !== false ? ' checked' : ''}>`, 'graphPinBranch') +
+            item('Pinned branch', '', text('graphPinnedBranch', 'main', undefined, s.graphPinBranch === false),
+              'graphPinnedBranch', 'graph lane column left pin main master',
+              'Branch name without the remote (e.g. develop). The local branch is used, or the default remote\'s one if there is no local branch.\nmain and master stand in for each other.\nEmpty = no branch is pinned.')) +
           logCards + `</div></div>` +
         logPreviewHtml(s)) +
       page('changes', '',
@@ -3572,7 +3579,7 @@
   ];
   /** Valores por defecto de los ajustes jbGit.* (los de package.json), para la marca de «modificado». */
   const CFG_DEFAULTS = { dateFormat: 'absolute', maxCommits: 1000, repositoryScanMaxDepth: 2, autoStage: true, protectedBranches: ['main', 'master'],
-    fontFamily: '', fontSize: 0, tagColor: 'yellow' };
+    fontFamily: '', fontSize: 0, tagColor: 'yellow', graphPinBranch: true, graphPinnedBranch: 'main' };
   function isModified(key) {
     if (!settings || !(key in CFG_DEFAULTS)) { return false; }
     const v = settings[key] ?? CFG_DEFAULTS[key];
@@ -3626,10 +3633,10 @@
     },
     branches: { modified: () => isModified('protectedBranches'), reset: () => resetCfg('protectedBranches') },
     graph: {
-      modified: () => isModified('dateFormat') || isModified('maxCommits') || !same({ ...LOGVIEW_DEFAULTS, ...ui.logView }, LOGVIEW_DEFAULTS) ||
+      modified: () => ['dateFormat', 'maxCommits', 'graphPinBranch', 'graphPinnedBranch'].some(isModified) || !same({ ...LOGVIEW_DEFAULTS, ...ui.logView }, LOGVIEW_DEFAULTS) ||
         ui.repoNames || !!(data && (data.firstParent || data.longEdges)),
       reset: () => {
-        resetCfg('dateFormat', 'maxCommits');
+        resetCfg('dateFormat', 'maxCommits', 'graphPinBranch', 'graphPinnedBranch');
         ui.logView = { ...LOGVIEW_DEFAULTS, details: ui.logView.details };   // el panel de detalles va con su flecha
         ui.repoNames = false; saveUi();
         applyLogView(); applySearch();

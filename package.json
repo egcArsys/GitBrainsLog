@@ -184,6 +184,16 @@
           "default": true,
           "description": "Añade al stage automáticamente los cambios de archivos con seguimiento, como JetBrains incluye todos los cambios en el commit. Los que se quitan con «−» se quedan fuera hasta que se vuelvan a añadir. Los archivos sin seguimiento no se añaden solos."
         },
+        "jbGit.graphPinBranch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Fija la línea de una rama (jbGit.graphPinnedBranch) en la columna de la izquierda del grafo del log, aunque haya ramas más recientes. Desactivado, cada rama toma el primer carril libre por orden de aparición."
+        },
+        "jbGit.graphPinnedBranch": {
+          "type": "string",
+          "default": "main",
+          "description": "Rama cuya línea (la cadena de primeros padres) va en la columna de la izquierda del grafo, sin el remoto (p. ej. «develop»). Se usa la local y, si no hay, la del remoto por defecto. main y master se sustituyen la una a la otra. Vacío = no fijar ninguna. Solo se aplica con jbGit.graphPinBranch activado."
+        },
         "jbGit.protectedBranches": {
           "type": "array",
           "items": {
