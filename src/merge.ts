@@ -129,7 +129,8 @@ export class MergePanel {
       retainContextWhenHidden: true,
       localResourceRoots: [media],
     });
-    panel.iconPath = vscode.Uri.joinPath(media, 'icon.svg');
+    // Las pestañas pintan el icono como imagen (sin currentColor): una variante por tema.
+    panel.iconPath = { light: vscode.Uri.joinPath(media, 'icon-light.svg'), dark: vscode.Uri.joinPath(media, 'icon-dark.svg') };
     const p = new MergePanel(panel, git, rel, crlf, onDone, openNative);
     open.set(k, p);
     panel.webview.html = p.html(media);

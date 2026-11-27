@@ -64,7 +64,8 @@ export class ComparePanel {
       retainContextWhenHidden: true,
       localResourceRoots: [media],
     });
-    panel.iconPath = vscode.Uri.joinPath(media, 'icon.svg');
+    // Las pestañas pintan el icono como imagen (sin currentColor): una variante por tema.
+    panel.iconPath = { light: vscode.Uri.joinPath(media, 'icon-light.svg'), dark: vscode.Uri.joinPath(media, 'icon-dark.svg') };
     const c = new ComparePanel(panel, git, left, right, title, openNative, history);
     panel.webview.html = c.html(media);
   }

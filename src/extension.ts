@@ -338,7 +338,8 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
     if (this.editor && this.editor !== panel) { panel.dispose(); this.editor.reveal(); return; }
     this.editor = panel;
     const media = this.media();
-    panel.iconPath = vscode.Uri.joinPath(media, 'icon.svg');
+    // Las pestañas pintan el icono como imagen (sin currentColor): una variante por tema.
+    panel.iconPath = { light: vscode.Uri.joinPath(media, 'icon-light.svg'), dark: vscode.Uri.joinPath(media, 'icon-dark.svg') };
     panel.webview.options = { enableScripts: true, localResourceRoots: [media] };
     this.loadLog(panel.webview);
     panel.webview.onDidReceiveMessage(m => this.route(panel.webview, m));
