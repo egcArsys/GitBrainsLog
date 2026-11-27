@@ -4,8 +4,8 @@
   const vscode = acquireVsCodeApi();
   // Iconos de archivos del tema de iconos de VS Code (fileicons.js); sin tema, cada fila usa el suyo de siempre
   const jbFileIcons = /** @type {any} */ (window).jbFileIcons || { html: () => '', apply() { /* nada */ }, setTheme() { /* nada */ } };
-  // Fecha con un patrón personalizado (dateformat.js); sin él, la del sistema
-  const jbDateFormat = /** @type {any} */ (window).jbDateFormat || { format: (_p, d) => d.toLocaleString() };
+  // Fechas absolutas y con patrón (dateformat.js, cargado antes que este script)
+  const jbDateFormat = /** @type {any} */ (window).jbDateFormat;
   const DEFAULT_DATE_PATTERN = 'dd/MM/yyyy HH:mm';
 
   // Alto de una fila del log: tamaño de letra + 11 (24 con 13 px); lo recalcula applyFonts
@@ -897,17 +897,36 @@
    * Ancho de la columna Date: lo que mide la fecha más larga posible con la letra actual, con el
    * formato del log (o el que se pase, para la vista previa de Settings).
    */
-  function dateColumnWidth(mode = data && data.dateFormat, pattern = data && data.datePattern) {
-    const ctx = document.createElement('canvas').getContext('2d');
+  function dateColumnWidth(mode = data && data.dateFormat, pattern = data && data.dateFormatPattern) {
+    const ctx = dateCtx ||= document.createElement('canvas').getContext('2d');
     if (!ctx) { return Math.round(130 * FS / 13); }
-    ctx.font = `${FS}px ${getComputedStyle(document.body).fontFamily}`;
+    // Solo cambia con el formato o la letra: se recalcula cuando cambia uno de los dos (en cada
+    // recarga del log y en cada pintado de Settings llega el mismo)
+    const font = `${FS}px ${getComputedStyle(document.body).fontFamily}`;
+    const key = `${mode}|${pattern}|${font}`;
+    const hit = dateWidths.get(key);
+    if (hit !== undefined) { return hit; }
+    ctx.font = font;
     const now = Date.now() / 1000;
-    // Absoluta (dos cifras en todo), relativa (las más largas: horas y días) o con patrón (también
-    // un miércoles de septiembre: los nombres de mes y día más largos en muchos idiomas)
-    const samples = [Date.UTC(2026, 11, 28, 22, 58) / 1000, Date.UTC(2026, 8, 30, 10, 58) / 1000, now - 23 * 3600, now - 28 * 86400, now - 50 * 60]
-      .map(t => formatDate(t, mode, pattern));
-    return Math.ceil(Math.max(...samples.map(t => ctx.measureText(t).width))) + 22;   // + padding de la celda
+    // Absoluta (dos cifras en todo, en hora local) y relativa (las más largas: horas y días)
+    const times = [new Date(2026, 11, 28, 22, 58).getTime() / 1000, now - 23 * 3600, now - 28 * 86400, now - 50 * 60];
+    // Con patrón, el mes y el día de la semana más largos dependen del idioma (październik,
+    // poniedziałek, segunda-feira…): los días 22 a 28 de cada mes dan todas las combinaciones de
+    // mes y día de la semana, con el día y la hora a dos cifras
+    if (mode === 'custom') {
+      for (let m = 0; m < 12; m++) {
+        for (let d = 22; d <= 28; d++) { times.push(new Date(2026, m, d, 22, 58, 58).getTime() / 1000); }
+      }
+    }
+    const samples = times.map(t => formatDate(t, mode, pattern));
+    const width = Math.ceil(Math.max(...samples.map(t => ctx.measureText(t).width))) + 22;   // + padding de la celda
+    dateWidths.set(key, width);
+    return width;
   }
+  /** @type {CanvasRenderingContext2D | null | undefined} */
+  let dateCtx;
+  /** Ancho de la columna Date por formato y letra (el del log y el de la vista previa de Settings). */
+  const dateWidths = new Map();
 
   function logViewMenu() {
     const lv = ui.logView;
@@ -945,21 +964,20 @@
    * Fecha de un commit con el formato del log (jbGit.dateFormat: absoluta, relativa o con el patrón
    * de jbGit.dateFormatPattern), o con el que se pase (la vista previa de Settings).
    */
-  function formatDate(t, mode = data && data.dateFormat, pattern = data && data.datePattern) {
+  function formatDate(t, mode = data && data.dateFormat, pattern = data && data.dateFormatPattern) {
     const d = new Date(t * 1000);
     if (mode === 'custom') { return jbDateFormat.format(pattern || DEFAULT_DATE_PATTERN, d); }
     if (mode === 'relative') {
       const diff = (Date.now() - d.getTime()) / 1000;
-      const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+      const rtf = relativeFormat ||= new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
       if (diff < 3600) { return rtf.format(-Math.max(1, Math.round(diff / 60)), 'minute'); }
       if (diff < 86400) { return rtf.format(-Math.round(diff / 3600), 'hour'); }
       if (diff < 86400 * 30) { return rtf.format(-Math.round(diff / 86400), 'day'); }
     }
-    // Absoluta: siempre dd/MM/yyyy, HH:mm (día primero y 24 horas), sea cual sea el idioma de VS
-    // Code; con toLocaleDateString salía 11/26/2026 en inglés de EE. UU.
-    const p2 = n => String(n).padStart(2, '0');
-    return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}, ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    return jbDateFormat.absolute(d);
   }
+  /** @type {Intl.RelativeTimeFormat | undefined} */
+  let relativeFormat;
 
   /** Desplaza el log para que el commit quede en el centro de la vista. */
   // Commit que había que centrar con el log oculto (no tiene alto): se centra al volver a él
@@ -3598,8 +3616,10 @@
     { id: 'shortcuts', title: 'Keyboard Shortcuts', icon: 'keyboard' },
   ];
   /** Valores por defecto de los ajustes jbGit.* (los de package.json), para la marca de «modificado». */
-  const CFG_DEFAULTS = { dateFormat: 'absolute', dateFormatPattern: 'dd/MM/yyyy HH:mm', maxCommits: 1000, repositoryScanMaxDepth: 2, autoStage: true, protectedBranches: ['main', 'master'],
+  const CFG_DEFAULTS = { dateFormat: 'absolute', dateFormatPattern: DEFAULT_DATE_PATTERN, maxCommits: 1000, repositoryScanMaxDepth: 2, autoStage: true, protectedBranches: ['main', 'master'],
     fontFamily: '', fontSize: 0, tagColor: 'yellow', graphPinBranch: true, graphPinnedBranch: ['main', 'master'] };
+  /** Ajustes jbGit.* de la página Settings ▸ Log ▸ Graph (marca de «modificado» y Reset). */
+  const GRAPH_CFG = ['dateFormat', 'dateFormatPattern', 'maxCommits', 'graphPinBranch', 'graphPinnedBranch'];
   function isModified(key) {
     if (!settings || !(key in CFG_DEFAULTS)) { return false; }
     const v = settings[key] ?? CFG_DEFAULTS[key];
@@ -3653,10 +3673,10 @@
     },
     branches: { modified: () => isModified('protectedBranches'), reset: () => resetCfg('protectedBranches') },
     graph: {
-      modified: () => ['dateFormat', 'dateFormatPattern', 'maxCommits', 'graphPinBranch', 'graphPinnedBranch'].some(isModified) || !same({ ...LOGVIEW_DEFAULTS, ...ui.logView }, LOGVIEW_DEFAULTS) ||
+      modified: () => GRAPH_CFG.some(isModified) || !same({ ...LOGVIEW_DEFAULTS, ...ui.logView }, LOGVIEW_DEFAULTS) ||
         ui.repoNames || !!(data && (data.firstParent || data.longEdges)),
       reset: () => {
-        resetCfg('dateFormat', 'dateFormatPattern', 'maxCommits', 'graphPinBranch', 'graphPinnedBranch');
+        resetCfg(...GRAPH_CFG);
         ui.logView = { ...LOGVIEW_DEFAULTS, details: ui.logView.details };   // el panel de detalles va con su flecha
         ui.repoNames = false; saveUi();
         applyLogView(); applySearch();

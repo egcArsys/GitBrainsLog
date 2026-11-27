@@ -2,7 +2,7 @@
 // Fecha con un patrón personalizado (jbGit.dateFormat = «custom», jbGit.dateFormatPattern), con las
 // letras de JetBrains / Java: yyyy-MM-dd HH:mm, dd MMM yyyy, EEE h:mm a… El texto entre comillas
 // simples sale tal cual ('at' → at; '' → '); cualquier otro carácter, también. Los nombres de mes
-// y de día salen en el idioma de VS Code. Lo carga el panel principal (formatDate de main.js).
+// y de día salen en el idioma de VS Code. Lo cargan el panel principal, Push y Compare.
 (function () {
   const TOKEN = /'(?:[^']|'')*'|yyyy|yy|MMMM|MMM|MM|M|dd|d|EEEE|EEE|HH|H|hh|h|mm|m|ss|s|a/g;
   const pad = (/** @type {number} */ n) => String(n).padStart(2, '0');
@@ -47,5 +47,12 @@
     });
   }
 
-  /** @type {any} */ (window).jbDateFormat = { format };
+  /**
+   * La fecha absoluta: siempre dd/MM/yyyy, HH:mm (día primero y 24 horas), sea cual sea el idioma
+   * de VS Code. La misma en el Log, Push y Compare / Show History.
+   * @param {Date} d
+   */
+  const absolute = d => format('dd/MM/yyyy, HH:mm', d);
+
+  /** @type {any} */ (window).jbDateFormat = { format, absolute };
 })();

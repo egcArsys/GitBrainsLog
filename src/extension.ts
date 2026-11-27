@@ -11,8 +11,9 @@ import { MergePanel } from './merge';
 import { DialogWindow } from './dialog';
 import { fontAttrs, fontSettings } from './fonts';
 import { FileIconsFeed, watchFileIcons } from './fileIcons';
+import { tabIcon } from './tabIcon';
 import {
-  scanDepth, commitsPerPage, mergeArgs, autoBranchColor, DEFAULT_FOLDER_COLORS, validateSetting, mergeLogs,
+  scanDepth, commitsPerPage, datePattern, mergeArgs, autoBranchColor, DEFAULT_FOLDER_COLORS, validateSetting, mergeLogs,
   samePath, pathInside, safeRepoPath, nestedRepos, pickPinnedRef, pinnedBranchNames, pinnedBranchList, SerialQueue, Generation, watchSpecs, nonce as newNonce, escAttr,
 } from './core';
 
@@ -338,8 +339,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
     if (this.editor && this.editor !== panel) { panel.dispose(); this.editor.reveal(); return; }
     this.editor = panel;
     const media = this.media();
-    // Las pestañas pintan el icono como imagen (sin currentColor): una variante por tema.
-    panel.iconPath = { light: vscode.Uri.joinPath(media, 'icon-light.svg'), dark: vscode.Uri.joinPath(media, 'icon-dark.svg') };
+    panel.iconPath = tabIcon(media);
     panel.webview.options = { enableScripts: true, localResourceRoots: [media] };
     this.loadLog(panel.webview);
     panel.webview.onDidReceiveMessage(m => this.route(panel.webview, m));
@@ -588,11 +588,11 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
       }
       // La rama fijada de cada repo (ver pinnedBranchNames): su línea va en el carril de la izquierda
       const pinNames = pinnedBranchNames(cfg);
-      const mainTips = included.flatMap(r => {
-        const m = pickPinnedRef(r.refs, r.defaultRemote(), pinNames);
-        return m ? [r.id(m.hash)] : [];
+      const pinTips = included.flatMap(r => {
+        const pin = pickPinnedRef(r.refs, r.defaultRemote(), pinNames);
+        return pin ? [r.id(pin.hash)] : [];
       });
-      const graph = computeGraph(list, this.longEdges(), this.branchColorFn(included), mainTips);
+      const graph = computeGraph(list, this.longEdges(), this.branchColorFn(included), pinTips);
       const favs = this.favoriteSets();
       this.post({
         type: 'data',
@@ -627,7 +627,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
         longEdges: this.longEdges(),
         hasMore,
         dateFormat: cfg.get<string>('dateFormat', 'absolute'),
-        datePattern: cfg.get<string>('dateFormatPattern', 'dd/MM/yyyy HH:mm'),
+        dateFormatPattern: datePattern(cfg),
         commits: list.map((c, i) => ({ ...c, g: graph[i] })),
       });
       await this.refreshChanges();
@@ -1750,7 +1750,7 @@ export class GitLogViewProvider implements vscode.WebviewViewProvider, vscode.Di
       type: 'settings',
       values: {
         dateFormat: c.get<string>('dateFormat', 'absolute'),
-        dateFormatPattern: c.get<string>('dateFormatPattern', 'dd/MM/yyyy HH:mm'),
+        dateFormatPattern: datePattern(c),
         maxCommits: commitsPerPage(c),
         repositoryScanMaxDepth: scanDepth(c),
         autoStage: c.get<boolean>('autoStage', true),

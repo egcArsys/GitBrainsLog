@@ -6,6 +6,8 @@
   const vscode = acquireVsCodeApi();
   // Iconos de archivos del tema de iconos de VS Code (fileicons.js); sin tema, la lista queda sin iconos
   const jbFileIcons = /** @type {any} */ (window).jbFileIcons || { html: () => '', apply() { /* nada */ }, setTheme() { /* nada */ } };
+  // Fechas (dateformat.js, cargado antes que este script)
+  const jbDateFormat = /** @type {any} */ (window).jbDateFormat;
   // Fuentes de Settings ▸ Fonts (atributos data-* del <body>; sin ellos, las de VS Code)
   (() => {
     const d = document.body.dataset, r = document.documentElement.style;
@@ -133,11 +135,9 @@
   let historyFolder = false;
   let historyPath = '';
 
-  /** Fecha de un commit: siempre dd/MM/yyyy, HH:mm (como la absoluta del Log), sea cual sea el idioma de VS Code. */
-  function formatDate(t) {
-    const d = new Date(t * 1000);
-    const p2 = (/** @type {number} */ n) => String(n).padStart(2, '0');
-    return `${p2(d.getDate())}/${p2(d.getMonth() + 1)}/${d.getFullYear()}, ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  /** Fecha de un commit: la absoluta del Log (dateformat.js), dd/MM/yyyy, HH:mm en cualquier idioma. */
+  function formatDate(/** @type {number} */ t) {
+    return jbDateFormat.absolute(new Date(t * 1000));
   }
   function visibleCommits() {
     const q = histFilter.trim().toLowerCase();

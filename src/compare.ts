@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { FileChange, Git, HistoryEntry } from './git';
 import { fontAttrs } from './fonts';
+import { tabIcon } from './tabIcon';
 import { nonce as newNonce } from './core';
 import { FileIconsFeed } from './fileIcons';
 
@@ -64,8 +65,7 @@ export class ComparePanel {
       retainContextWhenHidden: true,
       localResourceRoots: [media],
     });
-    // Las pestañas pintan el icono como imagen (sin currentColor): una variante por tema.
-    panel.iconPath = { light: vscode.Uri.joinPath(media, 'icon-light.svg'), dark: vscode.Uri.joinPath(media, 'icon-dark.svg') };
+    panel.iconPath = tabIcon(media);
     const c = new ComparePanel(panel, git, left, right, title, openNative, history);
     panel.webview.html = c.html(media);
   }
@@ -153,6 +153,7 @@ export class ComparePanel {
     const css = webview.asWebviewUri(vscode.Uri.joinPath(media, 'compare.css'));
     const js = webview.asWebviewUri(vscode.Uri.joinPath(media, 'compare.js'));
     const icons = webview.asWebviewUri(vscode.Uri.joinPath(media, 'fileicons.js'));
+    const dates = webview.asWebviewUri(vscode.Uri.joinPath(media, 'dateformat.js'));
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -199,6 +200,7 @@ export class ComparePanel {
   </section>
 </div>
 <script nonce="${nonce}" src="${icons}"></script>
+<script nonce="${nonce}" src="${dates}"></script>
 <script nonce="${nonce}" src="${js}"></script>
 </body>
 </html>`;

@@ -78,6 +78,14 @@ export function scanDepth(c: ConfigLike): number {
   return Number.isFinite(n) ? Math.min(MAX_SCAN_DEPTH, Math.max(0, n)) : 2;
 }
 
+/** Patrón de la fecha por defecto con jbGit.dateFormat = custom (como en package.json). */
+export const DEFAULT_DATE_PATTERN = 'dd/MM/yyyy HH:mm';
+
+/** jbGit.dateFormatPattern limpio; si se escribió a mano un valor que no vale, el de por defecto. */
+export function datePattern(c: ConfigLike): string {
+  return SETTING_VALIDATORS.dateFormatPattern(c.get<unknown>('dateFormatPattern', DEFAULT_DATE_PATTERN)) ?? DEFAULT_DATE_PATTERN;
+}
+
 export function commitsPerPage(c: ConfigLike): number {
   const n = Math.round(Number(c.get<number>('maxCommits', 1000)));
   return Number.isFinite(n) ? Math.min(MAX_COMMITS_PAGE, Math.max(100, n)) : 1000;
@@ -98,8 +106,8 @@ export function mergeArgs(options: unknown, message: unknown): string[] {
   return args;
 }
 
-/** Las ramas principales, por orden de preferencia (como MAIN_BRANCHES de media/main.js). */
-export const MAIN_BRANCHES = ['main', 'master'];
+/** Ramas que se fijan a la izquierda del grafo por defecto (jbGit.graphPinnedBranch). */
+export const DEFAULT_PINNED_BRANCHES = ['main', 'master'];
 
 /**
  * Lista de nombres de un ajuste (jbGit.protectedBranches, jbGit.graphPinnedBranch): sin espacios
@@ -128,7 +136,7 @@ export function pinnedBranchNames(c: ConfigLike): string[] {
  * vacía, así nadie más tiene que comprobarlo.
  */
 export function pinnedBranchList(c: ConfigLike): string[] {
-  return (stringList(c.get<unknown>('graphPinnedBranch', MAIN_BRANCHES)) ?? []).filter(validPinName);
+  return (stringList(c.get<unknown>('graphPinnedBranch', DEFAULT_PINNED_BRANCHES)) ?? []).filter(validPinName);
 }
 
 /**

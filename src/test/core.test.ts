@@ -5,7 +5,7 @@ import * as path from 'path';
 import {
   scanDepth, commitsPerPage, MAX_SCAN_DEPTH, MAX_COMMITS_PAGE, mergeArgs, MERGE_OPTIONS, autoBranchColor,
   validateSetting, validFontFamily, validFontSize, mergeLogs, FOLDER_COLOR_TOKENS, samePath, pathInside, safeRepoPath,
-  nestedRepos, pickPinnedRef, pinnedBranchNames, pinnedBranchList, MAIN_BRANCHES,
+  nestedRepos, pickPinnedRef, pinnedBranchNames, pinnedBranchList, DEFAULT_PINNED_BRANCHES, datePattern, DEFAULT_DATE_PATTERN,
 } from '../core';
 import { MAIN_COLOR } from '../graph';
 
@@ -30,6 +30,14 @@ describe('scanDepth (jbGit.repositoryScanMaxDepth)', () => {
     const p = pkg.contributes.configuration.properties['jbGit.repositoryScanMaxDepth'];
     assert.equal(p.maximum, MAX_SCAN_DEPTH);
     assert.equal(p.minimum, 0);
+  });
+});
+
+describe('datePattern (jbGit.dateFormatPattern)', () => {
+  test('por defecto, el de package.json', () => assert.equal(datePattern(cfg({})), DEFAULT_DATE_PATTERN));
+  test('el patrón sin espacios alrededor', () => assert.equal(datePattern(cfg({ dateFormatPattern: ' yyyy-MM-dd ' })), 'yyyy-MM-dd'));
+  test('un valor escrito a mano que no vale: el de por defecto', () => {
+    for (const v of [5, {}, '', '   ', 'a\nb']) { assert.equal(datePattern(cfg({ dateFormatPattern: v })), DEFAULT_DATE_PATTERN, String(v)); }
   });
 });
 
@@ -260,10 +268,12 @@ describe('rutas (samePath, pathInside, safeRepoPath)', () => {
   });
 });
 
+// Refs de mentira para pickPinnedRef
+const local = (name: string) => ({ type: 'local', name, full: `refs/heads/${name}` });
+const remote = (remote: string, branch: string) => ({ type: 'remote', name: `${remote}/${branch}`, remote, branch, full: `refs/remotes/${remote}/${branch}` });
+
 describe('pickPinnedRef con main/master (la rama principal de un repo, para el grafo)', () => {
-  const pickMain = <R extends { type: string; name: string; remote?: string; branch?: string }>(refs: R[], remote?: string) => pickPinnedRef(refs, remote, MAIN_BRANCHES);
-  const local = (name: string) => ({ type: 'local', name, full: `refs/heads/${name}` });
-  const remote = (remote: string, branch: string) => ({ type: 'remote', name: `${remote}/${branch}`, remote, branch, full: `refs/remotes/${remote}/${branch}` });
+  const pickMain = <R extends { type: string; name: string; remote?: string; branch?: string }>(refs: R[], remote?: string) => pickPinnedRef(refs, remote, DEFAULT_PINNED_BRANCHES);
 
   test('la local main', () => assert.equal(pickMain([local('dev'), local('main')])?.name, 'main'));
   test('la local master si no hay main', () => assert.equal(pickMain([local('dev'), local('master')])?.name, 'master'));
@@ -287,8 +297,6 @@ describe('pickPinnedRef con main/master (la rama principal de un repo, para el g
 });
 
 describe('pinnedBranchNames y pickPinnedRef con una lista de ramas (jbGit.graphPinBranch / graphPinnedBranch)', () => {
-  const local = (name: string) => ({ type: 'local', name, full: `refs/heads/${name}` });
-  const remote = (remote: string, branch: string) => ({ type: 'remote', name: `${remote}/${branch}`, remote, branch, full: `refs/remotes/${remote}/${branch}` });
   const pin = (enabled: unknown, names: unknown) => pinnedBranchNames(cfg({ graphPinBranch: enabled, graphPinnedBranch: names }));
 
   test('por defecto: main y, si no hay, master', () => assert.deepEqual(pinnedBranchNames(cfg({})), ['main', 'master']));

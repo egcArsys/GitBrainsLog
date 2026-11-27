@@ -4,6 +4,7 @@ import * as os from 'os';
 import { promises as fs } from 'fs';
 import { Git } from './git';
 import { fontAttrs } from './fonts';
+import { tabIcon } from './tabIcon';
 import { nonce as newNonce } from './core';
 
 /**
@@ -129,8 +130,7 @@ export class MergePanel {
       retainContextWhenHidden: true,
       localResourceRoots: [media],
     });
-    // Las pestañas pintan el icono como imagen (sin currentColor): una variante por tema.
-    panel.iconPath = { light: vscode.Uri.joinPath(media, 'icon-light.svg'), dark: vscode.Uri.joinPath(media, 'icon-dark.svg') };
+    panel.iconPath = tabIcon(media);
     const p = new MergePanel(panel, git, rel, crlf, onDone, openNative);
     open.set(k, p);
     panel.webview.html = p.html(media);
